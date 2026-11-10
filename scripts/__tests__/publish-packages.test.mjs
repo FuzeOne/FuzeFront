@@ -21,32 +21,36 @@ import {
 } from '../publish-packages.mjs'
 
 test('aliasFor maps the canonical scope onto the owner scope', () => {
-  assert.equal(aliasFor('@fuzefront/chat-ui'), '@izzywdev/fuzefront-chat-ui')
-  assert.equal(aliasFor('@fuzefront/i18n'), '@izzywdev/fuzefront-i18n')
+  assert.equal(aliasFor('@fuzefront/chat-ui'), '@fuzeone/fuzefront-chat-ui')
+  assert.equal(aliasFor('@fuzefront/i18n'), '@fuzeone/fuzefront-i18n')
 })
 
 test('aliasFor leaves an already-owner-scoped name alone', () => {
-  // packages/identity is already published under the owner scope; renaming it
-  // again would produce @izzywdev/fuzefront-izzywdev-…
+  // packages/selection-lists-ui is already named under the owner scope
+  // (@fuzeone); renaming it again would produce @fuzeone/fuzeone-… .
   assert.equal(
-    aliasFor('@izzywdev/fuzefront-identity'),
-    '@izzywdev/fuzefront-identity'
+    aliasFor('@fuzeone/selection-lists-ui'),
+    '@fuzeone/selection-lists-ui'
   )
 })
 
-test('aliasFor maps every canonical scope, not just @fuzefront', () => {
-  // The bug this prevents, measured: @fuzeone/selection-lists-ui fell through
-  // aliasFor unchanged and was published under its own scope, which GitHub
-  // Packages rejects because the scope is not the repo owner:
-  //
-  //   npm error 403 Forbidden - PUT https://npm.pkg.github.com/@fuzeone%2fselection-lists-ui
-  //   Permission permission_denied: The requested installation does not exist.
-  //
-  // 24 of 25 matrix legs went green and the RUN still concluded `failure`, so a
-  // green packages-publish stopped being evidence that anything shipped.
+test('aliasFor re-homes the old-owner scope to @fuzeone (empty-prefix alias)', () => {
+  // Three packages carry the old owner in their canonical name —
+  // @izzywdev/fuzefront-identity / -api-client / -sdk-react — from when
+  // izzywdev was the repo owner. After the 2026-11-06 move to the FuzeOne org
+  // they must publish under @fuzeone, WITHOUT a double prefix: the name after
+  // @izzywdev/ already begins `fuzefront-`, so the @izzywdev/ -> '' alias yields
+  // @fuzeone/fuzefront-identity, the same shape @fuzefront/* produces. If this
+  // regressed (e.g. @izzywdev dropped from SCOPE_ALIASES) the name would fall
+  // through unchanged and 403 as a non-owner scope — exactly the class of silent
+  // publish failure assertAliasable exists to catch.
   assert.equal(
-    aliasFor('@fuzeone/selection-lists-ui'),
-    '@izzywdev/fuzeone-selection-lists-ui'
+    aliasFor('@izzywdev/fuzefront-identity'),
+    '@fuzeone/fuzefront-identity'
+  )
+  assert.equal(
+    aliasFor('@izzywdev/fuzefront-api-client'),
+    '@fuzeone/fuzefront-api-client'
   )
 })
 
@@ -63,7 +67,7 @@ test('isPublishableName rejects a scope with no alias rule', () => {
   assert.equal(isPublishableName('@fuzeone/selection-lists-ui'), true)
   assert.equal(isPublishableName('@izzywdev/fuzefront-identity'), true)
   // A scope nobody has taught the script about, and a bare unscoped name:
-  // both would 403 exactly like @fuzeone did.
+  // both resolve to no @fuzeone name and would 403 at npm publish.
   assert.equal(isPublishableName('@fuzenext/thing'), false)
   assert.equal(isPublishableName('selection-list-service'), false)
 })
@@ -242,7 +246,7 @@ test('assertLocalDepsResolvable passes the real workspace set', () => {
 })
 
 test('rewrites in-family dependencies, not just the package name', () => {
-  // The bug this prevents: a published @izzywdev/fuzefront-chat-ui whose
+  // The bug this prevents: a published @fuzeone/fuzefront-chat-ui whose
   // dependencies still name @fuzefront/chat-client. That name resolves to
   // nothing on any registry, so the package installs for nobody.
   const out = rewriteForPublish(
@@ -253,15 +257,17 @@ test('rewrites in-family dependencies, not just the package name', () => {
     },
     { '@fuzefront/chat-client': '1.1.0' }
   )
-  assert.equal(out.name, '@izzywdev/fuzefront-chat-ui')
+  assert.equal(out.name, '@fuzeone/fuzefront-chat-ui')
   assert.deepEqual(out.dependencies, {
-    '@izzywdev/fuzefront-chat-client': '^1.1.0',
+    '@fuzeone/fuzefront-chat-client': '^1.1.0',
     react: '^19.2.0',
   })
 })
 
 test('turns local specifiers into a real version range', () => {
-  // `file:../../packages/identity` is meaningless outside this tree.
+  // `file:../../packages/identity` is meaningless outside this tree. The dep's
+  // canonical name is the old-owner @izzywdev/fuzefront-identity; it is both
+  // re-homed to @fuzeone and pinned to the target's real version.
   const out = rewriteForPublish(
     {
       name: '@fuzefront/billing-ui',
@@ -273,7 +279,7 @@ test('turns local specifiers into a real version range', () => {
     { '@izzywdev/fuzefront-identity': '1.0.0' }
   )
   assert.deepEqual(out.dependencies, {
-    '@izzywdev/fuzefront-identity': '^1.0.0',
+    '@fuzeone/fuzefront-identity': '^1.0.0',
   })
 })
 
@@ -290,7 +296,7 @@ test('rewrites peerDependencies too', () => {
     { '@fuzefront/design-system': '1.0.0' }
   )
   assert.deepEqual(out.peerDependencies, {
-    '@izzywdev/fuzefront-design-system': '^1.0.0',
+    '@fuzeone/fuzefront-design-system': '^1.0.0',
     react: '^19.0.0',
   })
 })

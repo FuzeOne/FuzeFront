@@ -6,22 +6,23 @@ name: Publish packages (GitHub Packages, private)
 # THIS WORKFLOW USED TO BE INERT, AND THAT WAS THE BUG.
 #
 # GitHub Packages requires the npm scope to match the account that OWNS the
-# repository. This repo is owned by the personal account **izzywdev**. The guard
-# tested first for a `fuzefront` org (which does not exist) and then for
-# `FuzeOne` (which exists but owns no repositories), so the job could never fire
-# and not one package had ever been published. A workflow that no-ops on every
-# run is indistinguishable from a workflow that works, which is why this went
-# unnoticed for so long — every run was green.
+# repository. The guard once tested first for a `fuzefront` org (which never
+# existed) and then for `FuzeOne` (which existed but owned no repositories), so
+# the job could never fire and not one package had ever been published. A
+# workflow that no-ops on every run is indistinguishable from a workflow that
+# works, which is why this went unnoticed for so long — every run was green.
+# For a stretch it then published under `@izzywdev`, the personal account that
+# actually owned the repo, because waiting on an org transfer was not a release
+# strategy.
 #
-# It now publishes under `@izzywdev`, matching the actual owner. Waiting on an
-# org transfer is not a release strategy: the transfer is a human action with no
-# date, and consumers need these packages now. If the repos ever do move to
-# FuzeOne, change OWNER_SCOPE in scripts/publish-packages.mjs and the guard here
-# — one edit each, and the canonical `@fuzefront/*` names in the source tree
-# never had to move.
+# On 2026-11-06 the repos DID move to the FuzeOne org. So the guard now tests
+# `FuzeOne` and the scope is `@fuzeone`, exactly the "one edit each once the
+# transfer happens" the previous version promised. OWNER_SCOPE in
+# scripts/publish-packages.mjs was flipped in the same change; the canonical
+# `@fuzefront/*` names in the source tree still never had to move.
 #
 # The canonical names stay `@fuzefront/*` in the tree; the publish script
-# renames to `@izzywdev/fuzefront-*` at publish time AND rewrites in-family
+# renames to `@fuzeone/fuzefront-*` at publish time AND rewrites in-family
 # dependencies to match, so a published package is installable on its own. That
 # last part is what the per-package publishers this replaces got wrong.
 #
@@ -107,7 +108,7 @@ concurrency:
 
 jobs:
   verify:
-    if: github.repository_owner == 'izzywdev'
+    if: github.repository_owner == 'FuzeOne'
     runs-on: ubuntu-latest
     outputs:
       packages: ${{ steps.list.outputs.packages }}
@@ -145,7 +146,7 @@ jobs:
 
   publish:
     needs: verify
-    if: github.repository_owner == 'izzywdev' && needs.verify.outputs.packages != '[]'
+    if: github.repository_owner == 'FuzeOne' && needs.verify.outputs.packages != '[]'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -161,7 +162,7 @@ jobs:
         with:
           node-version: '24.x'
           registry-url: 'https://npm.pkg.github.com'
-          scope: '@izzywdev'
+          scope: '@fuzeone'
           cache: 'npm'
 
       - name: Install
