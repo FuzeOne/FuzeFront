@@ -4,22 +4,24 @@
 // WHY THIS EXISTS INSTEAD OF PLAIN `lerna publish`
 //
 // GitHub Packages requires the npm scope to match the account that OWNS the
-// repository. This repo is owned by the personal account **izzywdev**, so the
-// canonical `@fuzefront/*` names cannot publish there — no `fuzefront` account
-// exists, and the `FuzeOne` org that does exist owns no repositories yet. The
-// previous workflow was gated on an owner that never matched, so lerna no-opped
-// on every run and not one package had ever been published.
+// repository. On 2026-11-06 every Fuze repo moved from the personal account
+// **izzywdev** to the **FuzeOne** org, so the owner scope is now `@fuzeone`.
+// Until then packages published under `@izzywdev`, because that was the only
+// account that actually owned the repo — the long-promised "flip OWNER_SCOPE
+// and the guard once the org transfer happens" that .npmrc and
+// packages-publish.yml both reference. This is that flip.
 //
-// The fix is to publish under the owner's scope while keeping the canonical
-// names in the source tree: `@fuzefront/x` is renamed to
-// `@izzywdev/fuzefront-x` at publish time. That is the same mechanism the
-// interim per-package publishers already used successfully; this generalises it
-// to every package so they stop drifting apart.
+// The canonical names stay put in the source tree and are renamed at publish
+// time: `@fuzefront/x` -> `@fuzeone/fuzefront-x`, and the three packages whose
+// canonical name is already `@izzywdev/fuzefront-x` (identity, api-client,
+// sdk-react) -> `@fuzeone/fuzefront-x`. Packages already named `@fuzeone/*`
+// publish unchanged. That is the same rename mechanism the interim per-package
+// publishers used; this generalises it to every package so they stop drifting.
 //
 // The part those one-offs got wrong, and this does not: **intra-family
-// dependencies are rewritten too.** A published `@izzywdev/fuzefront-chat-ui`
+// dependencies are rewritten too.** A published `@fuzeone/fuzefront-chat-ui`
 // whose dependencies still say `@fuzefront/chat-client` cannot be installed by
-// anyone — that name resolves to nothing on any registry. Every `@fuzefront/*`
+// anyone — that name resolves to nothing on any registry. Every in-family
 // dependency is rewritten to its alias, and `file:`/`workspace:` specifiers
 // (meaningless outside this tree) are replaced with the target's real version.
 //
@@ -53,30 +55,35 @@ import { existsSync } from 'node:fs'
 
 const root = process.cwd()
 const REGISTRY = 'https://npm.pkg.github.com'
-const OWNER_SCOPE = '@izzywdev'
+const OWNER_SCOPE = '@fuzeone'
 
 /**
  * Canonical source-tree scope -> the prefix its packages take under the owner
  * scope at publish time.
  *
- * EVERY canonical scope in the tree needs an entry here. GitHub Packages
+ * EVERY canonical scope in the tree needs an entry here, except the owner scope
+ * itself (`@fuzeone/`), which `aliasFor` passes through. GitHub Packages
  * requires the published scope to equal the account that owns the repository
- * (`izzywdev`), so a name that is neither owner-scoped nor aliased by this map
- * is not publishable at all — `npm publish` answers
+ * (`FuzeOne`), so a name that is neither owner-scoped nor aliased by this map is
+ * not publishable at all — `npm publish` answers
  * `403 permission_denied: The requested installation does not exist`.
  *
- * This map used to be a single `CANONICAL_SCOPE = '@fuzefront/'` constant, and
- * everything else fell through `aliasFor` unchanged. `@fuzeone/*` — a second,
- * deliberate canonical scope (EPIC-17 records the decision: the intended future
- * home is the `fuzeone` org) — therefore went out under its own name and 403'd
- * on every single run. 24 of 25 legs succeeded and the run's conclusion was
- * still `failure`, which destroys the only property this workflow is for: that
- * a green `packages-publish` is evidence the packages actually shipped. See
- * `assertAliasable` for why a future third scope now fails loudly instead.
+ * `@izzywdev/` maps with an EMPTY prefix on purpose. Three packages carry the
+ * old owner in their canonical name — `@izzywdev/fuzefront-identity`,
+ * `-api-client`, `-sdk-react` — from when izzywdev WAS the owner. The name after
+ * `@izzywdev/` already begins `fuzefront-`, so stripping the scope and
+ * prepending `@fuzeone/` yields the same `@fuzeone/fuzefront-*` shape the
+ * `@fuzefront/` entry produces. This re-homes them to the org without a
+ * canonical rename (which would churn every in-tree importer); their published
+ * name simply moves `@izzywdev/fuzefront-x` -> `@fuzeone/fuzefront-x`.
+ *
+ * `assertAliasable` fails the run loudly if a workspace appears under a scope
+ * with no entry here, rather than letting one leg 403 among two dozen greens —
+ * the failure mode that let an earlier unaliased scope ship a red run as green.
  */
 const SCOPE_ALIASES = {
   '@fuzefront/': 'fuzefront-',
-  '@fuzeone/': 'fuzeone-',
+  '@izzywdev/': '',
 }
 
 const DEP_FIELDS = ['dependencies', 'peerDependencies', 'optionalDependencies']
@@ -97,8 +104,9 @@ function readJson(path) {
 }
 
 /**
- * `@fuzefront/chat-ui` -> `@izzywdev/fuzefront-chat-ui`.
- * `@fuzeone/selection-lists-ui` -> `@izzywdev/fuzeone-selection-lists-ui`.
+ * `@fuzefront/chat-ui` -> `@fuzeone/fuzefront-chat-ui`.
+ * `@izzywdev/fuzefront-identity` -> `@fuzeone/fuzefront-identity` (empty-prefix alias).
+ * `@fuzeone/selection-lists-ui` -> `@fuzeone/selection-lists-ui` (already owner-scoped).
  *
  * Already-owner-scoped names pass through, and so does everything else —
  * `aliasFor` is also applied to every DEPENDENCY name, where `react` and
